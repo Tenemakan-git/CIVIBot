@@ -1,0 +1,482 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [pgvector(map: "vector")]
+}
+
+model Role {
+  id          String  @id @default(uuid())
+  nom         String  @unique
+  description String?
+  users       User[]
+}
+
+model User {
+  id           String    @id @default(uuid())
+  nom          String
+  prenom       String
+  email        String    @unique
+  telephone    String?
+  passwordHash String
+  langue       String    @default("fr")
+  statut       String    @default("actif")
+  roleId       String
+  role         Role      @relation(fields: [roleId], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  conversations  Conversation[]
+  documents      UserDocument[]
+  guidedSessions GuidedSession[]
+  checklists     Checklist[]
+  folders        AdministrativeFolder[]
+}
+
+model Conversation {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  titre     String    @default("Nouvelle conversation")
+  statut    String    @default("active")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  messages Message[]
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         String
+  contenu        String
+  tokens         Int?
+  modeleUtilise  String?
+  createdAt      DateTime     @default(now())
+}
+
+model Domaine {
+  id         String      @id @default(uuid())
+  nom        String      @unique
+  slug       String      @unique
+  categories Categorie[]
+}
+
+model Categorie {
+  id         String      @id @default(uuid())
+  domaineId  String
+  domaine    Domaine     @relation(fields: [domaineId], references: [id])
+  nom        String
+  slug       String      @unique
+  procedures Procedure[]
+}
+
+model Procedure {
+  id          String             @id @default(uuid())
+  categorieId String
+  categorie   Categorie          @relation(fields: [categorieId], references: [id])
+  titre       String
+  description String
+  cout        String?
+  delai       String?
+  eligibilite String?
+  resume      String?
+  actif       Boolean            @default(false)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  steps     ProcedureStep[]
+  documents RequiredDocument[]
+  faqs      Faq[]
+  sources   Source[]
+}
+
+model ProcedureStep {
+  id          String    @id @default(uuid())
+  procedureId String
+  procedure   Procedure @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  ordre       Int
+  titre       String
+  description String
+}
+
+model RequiredDocument {
+  id          String    @id @default(uuid())
+  procedureId String
+  procedure   Procedure @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  nom         String
+  obligatoire Boolean   @default(true)
+  remarque    String?
+}
+
+model Faq {
+  id          String     @id @default(uuid())
+  procedureId String?
+  procedure   Procedure? @relation(fields: [procedureId], references: [id], onDelete: SetNull)
+  question    String
+  reponse     String
+}
+
+model Source {
+  id            String     @id @default(uuid())
+  procedureId   String?
+  procedure     Procedure? @relation(fields: [procedureId], references: [id], onDelete: SetNull)
+  organisme     String
+  url           String?
+  dateMiseAJour DateTime?
+}
+
+model KnowledgeDocument {
+  id        String           @id @default(uuid())
+  titre     String
+  fichier   String
+  version   String           @default("1")
+  categorie String?
+  organisme String?
+  actif     Boolean          @default(true)
+  createdAt DateTime         @default(now())
+
+  chunks   KnowledgeChunk[]
+  versions KnowledgeVersion[]
+}
+
+model KnowledgeChunk {
+  id         String            @id @default(uuid())
+  documentId String
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  texte      String
+  embedding  Unsupported("vector(1024)")
+  page       Int?
+  ordre      Int
+}
+
+model UserDocument {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nom       String
+  type      String
+  chemin    String
+  taille    Int
+  createdAt DateTime  @default(now())
+
+  analysis DocumentAnalysis?
+}
+
+model DocumentAnalysis {
+  id         String       @id @default(uuid())
+  documentId String       @unique
+  document   UserDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  resume     String?
+  texteOcr   String?
+  lisible    Boolean      @default(true)
+  score      Float?
+  createdAt  DateTime     @default(now())
+}
+
+model GuidedSession {
+  id        String         @id @default(uuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  statut    String         @default("en_cours")
+  // Résultat du parcours : dossier + conversation générés à la complétion.
+  folderId       String?
+  conversationId String?
+  createdAt DateTime       @default(now())
+
+  answers GuidedAnswer[]
+}
+
+model GuidedAnswer {
+  id        String        @id @default(uuid())
+  sessionId String
+  session   GuidedSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question  String
+  reponse   String
+  ordre     Int
+  createdAt DateTime      @default(now())
+}
+
+model Checklist {
+  id        String          @id @default(uuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folderId  String?
+  folder    AdministrativeFolder? @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  titre     String
+  createdAt DateTime        @default(now())
+
+  items ChecklistItem[]
+}
+
+model ChecklistItem {
+  id          String    @id @default(uuid())
+  checklistId String
+  checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  texte       String
+  coche       Boolean   @default(false)
+  ordre       Int
+  // Lien optionnel vers un document requis (checklist « Documents à fournir »)
+  // pour synchroniser le coche avec le statut fourni/manquant du document.
+  folderDocumentId String?
+
+  @@index([folderDocumentId])
+}
+
+model AiLog {
+  id             String   @id @default(uuid())
+  conversationId String?
+  prompt         String
+  reponse        String
+  modele         String
+  tokensInput    Int
+  tokensOutput   Int
+  dureeMs        Int
+  cout           Float?
+  createdAt      DateTime @default(now())
+}
+
+model AiSettings {
+  id              String   @id @default(uuid())
+  modele          String   @default("claude-sonnet-4-6")
+  modeleSecours   String   @default("gemini-2.5-flash")
+  temperature     Float    @default(0.7)
+  maxTokens       Int      @default(1024)
+  topK            Int      @default(5)
+  seuilSimilarite Float    @default(0.7)
+  promptSysteme   String   @default("Tu es CiviBot, un assistant administratif pour les citoyens de Côte d'Ivoire. Tu aides à comprendre les procédures d'état civil et de création d'entreprise. Réponds toujours en français, de manière claire et précise. Base-toi sur le contexte fourni pour répondre.")
+  updatedAt       DateTime @updatedAt
+}
+
+model Statistic {
+  id              String   @id @default(uuid())
+  date            DateTime @default(now())
+  nbConversations Int      @default(0)
+  nbUtilisateurs  Int      @default(0)
+  nbDocuments     Int      @default(0)
+  nbRecherches    Int      @default(0)
+}
+
+// ───────────────────────── CiviBot V2 — Agentic ─────────────────────────
+
+/// Aggregate root (DDD) : le dossier administratif devient l'entité centrale.
+model AdministrativeFolder {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  domaine        String // etat_civil | creation_entreprise
+  procedureSlug  String?
+  titre          String
+  statut         String   @default("ouvert") // ouvert | en_cours | complet | termine
+  progression    Int      @default(0) // 0..100
+  conversationId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  plan          FolderPlan?
+  checklists    Checklist[]
+  documents     FolderDocument[]
+  timeline      TimelineEvent[]
+  notifications FolderNotification[]
+  sources       FolderSource[]
+  history       FolderHistory[]
+  pdfs          FolderPdf[]
+  generatedDocs GeneratedDocument[]
+
+  @@index([userId])
+  @@index([statut])
+}
+
+model FolderPlan {
+  id        String               @id @default(uuid())
+  folderId  String               @unique
+  folder    AdministrativeFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  steps     Json // PlanDto.steps
+  cout      String?
+  delai     String?
+  createdAt DateTime             @default(now())
+}
+
+model FolderDocument {
+  id             String               @id @default(uuid())
+  folderId       String
+  folder         AdministrativeFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  nom            String
+  statut         String               @default("manquant") // fourni | manquant
+  obligatoire    Boolean              @default(true)
+  userDocumentId String? // lien vers un UserDocument uploadé
+  createdAt      DateTime             @default(now())
+
+  @@index([folderId])
+}
+
+model TimelineEvent {
+  id        String               @id @default(uuid())
+  folderId  String
+  folder    AdministrativeFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  type      String // agent_step | status_change | notification…
+  label     String
+  payload   Json?
+  createdAt DateTime             @default(now())
+
+  @@index([folderId])
+}
+
+model FolderNotification {
+  id        String               @id @default(uuid())
+  folderId  String
+  folder    AdministrativeFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  type      String // rappel | retard | termine | nouvelle_info
+  message   String
+  lu        Boolean              @default(false)
+  createdAt DateTime             @default(now())
+
+  @@index([folderId])
+}
+
+model FolderSource {
+  id          String               @id @default(uuid())
+  folderId    String
+  folder      AdministrativeFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  organisme   String
+  url         String?
+  titre       String?
+  consultedAt DateTime             @default(now())
+
+  @@index([folderId])
+}
+
+model FolderHistory {
+  id        String               @id @default(uuid())
+  folderId  String
+  folder    AdministrativeFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  action    String
+  acteur    String // agent name | user | system
+  payload   Json?
+  createdAt DateTime             @default(now())
+
+  @@index([folderId])
+}
+
+model FolderPdf {
+  id         String               @id @default(uuid())
+  folderId   String
+  folder     AdministrativeFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  storageKey String
+  filename   String
+  bytes      Int
+  createdAt  DateTime             @default(now())
+
+  @@index([folderId])
+}
+
+/// Document officiel pré-rempli généré pour un dossier (demande manuscrite,
+/// déclaration CEPICI, lettre de réquisition…). `fields` conserve les valeurs
+/// utilisées pour l'audit et la re-génération.
+model GeneratedDocument {
+  id          String               @id @default(uuid())
+  folderId    String
+  folder      AdministrativeFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  templateKey String
+  titre       String
+  storageKey  String
+  filename    String
+  bytes       Int
+  fields      Json
+  createdAt   DateTime             @default(now())
+
+  @@index([folderId])
+}
+
+/// Staging du pipeline Web Research : jamais injecté directement dans la base
+/// documentaire — le Knowledge Manager n'insère qu'après verdict de validation.
+model KnowledgeCandidate {
+  id           String   @id @default(uuid())
+  organisme    String
+  sourceUrl    String
+  titre        String
+  rawText      String
+  cleanedText  String
+  contentHash  String   @unique // déduplication
+  statut       String   @default("en_attente") // en_attente | valide | rejete | insere
+  scores       Json? // ValidationVerdict.scores
+  rejectReason String?
+  createdAt    DateTime @default(now())
+
+  @@index([statut])
+}
+
+/// Versionnement des documents de connaissance.
+model KnowledgeVersion {
+  id         String            @id @default(uuid())
+  documentId String
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version    String
+  changeNote String?
+  createdAt  DateTime          @default(now())
+
+  @@index([documentId])
+}
+
+/// Recommandations du Learning Agent destinées aux administrateurs.
+model LearningInsight {
+  id             String   @id @default(uuid())
+  type           String // procedure_demandee | recherche_insuffisante | document_manquant
+  cle            String
+  domaine        String?
+  count          Int      @default(1)
+  recommandation String?
+  createdAt      DateTime @default(now())
+  lastSeen       DateTime @updatedAt
+
+  @@unique([type, cle])
+  @@index([type])
+}
+
+/// Traçabilité agentique : un enregistrement par exécution d'agent.
+model AgentRun {
+  id         String   @id @default(uuid())
+  runId      String // corrèle tous les agents d'un même workflow
+  folderId   String?
+  agent      String
+  status     String // success | partial | failed | needs_followup
+  confidence Float?
+  input      Json?
+  output     Json?
+  durationMs Int?
+  createdAt  DateTime @default(now())
+
+  @@index([runId])
+  @@index([folderId])
+}
+
+/// Point de service administratif géolocalisé (mairie, tribunal, CEPICI /
+/// Guichet Unique, préfecture). Sert l'orientation « où déposer mon dossier »
+/// et le tri par proximité.
+model ServicePoint {
+  id        String   @id @default(uuid())
+  type      String // mairie | tribunal | cepici | guichet_unique | prefecture
+  nom       String
+  domaine   String // etat_civil | creation_entreprise | both
+  adresse   String
+  commune   String?
+  ville     String
+  region    String?
+  latitude  Float
+  longitude Float
+  telephone String?
+  email     String?
+  horaires  String?
+  services  String[] // intitulés de démarches couvertes
+  url       String?
+  source    String? // provenance de la donnée (traçabilité)
+  updatedAt DateTime @updatedAt
+
+  @@index([domaine])
+  @@index([ville])
+  @@index([type])
+}
